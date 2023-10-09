@@ -13,6 +13,7 @@ using Stylelabs.M.Sdk.WebClient.Contracts.Audit;
 using Tavis.UriTemplates;
 using static System.Net.WebRequestMethods;
 using CHInheritanceTree;
+using System.Linq;
 
 namespace Stylelabs.M.WebSdk.Examples
 {
@@ -22,9 +23,6 @@ namespace Stylelabs.M.WebSdk.Examples
         {
             // String filter
             Console.WriteLine("Filter for entities (start of name) e.g: TEST or leave blank for all");
-
-            // Create a string variable and get user input from the keyboard and store it in the variable
-            string filter = Console.ReadLine();
 
             var startup = new Startup();
 
@@ -80,49 +78,120 @@ namespace Stylelabs.M.WebSdk.Examples
             StringBuilder sb = new StringBuilder();
             StringBuilder relations = new StringBuilder();
             Dictionary<string,List<string>> additionalTables = new Dictionary<string, List<string>>();
+            Dictionary<string,List<Tuple<string,string>>> tableMapping = new Dictionary<string, List<Tuple<string, string>>>();
 
-            foreach (var entity in result.Where(x => x.Name.StartsWith(filter)))
+            foreach (var entity in result)
             {
-                sb.AppendLine(entity.Name.Replace(".", ""));
+                //sb.AppendLine(entity.Name.Replace(".", ""));
+
+                if (!tableMapping.ContainsKey(entity.Name.Replace(".", "")))
+                {
+                    tableMapping.Add(entity.Name.Replace(".", ""), new List<Tuple<string,string>> { });
+                }
 
                 foreach (var member in entity.MemberGroups)
                 {
-                    foreach (var relation in member.Relations.Distinct().GroupBy(p => p.Name).Select(g => g.First()))
+                    foreach (var relation in member.Relations.Where(x =>!x.IsSystemOwned).Distinct().GroupBy(p => p.Name).Select(g => g.First()))
                     {
-                        if (relation?.Type == "Relation" && relation?.Definition != null)
+                        //if (relation?.Type == "Relation" && relation?.Definition != null)
+                        //{
+                        //    var relationProperty = relation.Definition.href.Split('/').Last();
+                        //    sb.AppendLine("  " + relation.Name.Replace(".", "") + " " + relation.Type + " fk " + relationProperty.Replace(".", "") + "." + relation.Name.Replace(".", ""));
+
+                        //    if (additionalTables.ContainsKey(relationProperty.Replace(".", "")))
+                        //    {
+                        //        additionalTables[relationProperty.Replace(".", "")].Add(relation.Name.Replace(".", ""));
+                        //    }
+                        //    else
+                        //    {
+                        //        additionalTables.Add(relationProperty.Replace(".", ""), new List<string> { relation.Name.Replace(".", "") });
+                        //    }
+                        //}
+                        //else
+                        //{
+                        //    sb.AppendLine("  " + relation.Name.Replace(".", "") + " " + relation.Type);
+                        //}
+
+
+                        if(!tableMapping[entity.Name.Replace(".", "")].Any(x => x.Item1 == relation.Name.Replace(".", "")))
                         {
-                            var relationProperty = relation.Definition.href.Split('/').Last();
-                            sb.AppendLine("  " + relation.Name.Replace(".", "") + " " + relation.Type + " fk " + relationProperty.Replace(".", "") + "." + relation.Name.Replace(".", ""));
-                            
-                            if (additionalTables.ContainsKey(relationProperty.Replace(".", "")))
+                            tableMapping[entity.Name.Replace(".", "")].Add(new Tuple<string, string>( relation.Name.Replace(".", ""), relation?.Type == "Relation" ? relation.Definition.href.Split('/').Last().Replace(".", "") : relation.Type));
+                        }
+
+                        if (relation?.Type == "Relation")
+                        {
+                            var relationTable = relation.Definition.href.Split('/').Last().Replace(".", "");
+
+                            if (!tableMapping.ContainsKey(relationTable))
                             {
-                                additionalTables[relationProperty.Replace(".", "")].Add(relation.Name.Replace(".", ""));
-                            }
-                            else
-                            {
-                                additionalTables.Add(relationProperty.Replace(".", ""), new List<string> { relation.Name.Replace(".", "") });
+                                tableMapping.Add(relationTable, new List<Tuple<string, string>> { });
+                                tableMapping[relationTable].Add(new Tuple<string, string>(relation.Name.Replace(".", ""), entity.Name.Replace(".", "")));
                             }
                         }
-                        else
-                        {
-                            sb.AppendLine("  " + relation.Name.Replace(".", "") + " " + relation.Type);
-                        }
+
+                        
                     }
                 }
-                sb.AppendLine("  autoGeneratedName varchar");
+                //sb.AppendLine("  autoGeneratedName varchar");
             }
 
-            foreach (var item in additionalTables.Where(x => !(x.Key.StartsWith(filter))))
+            foreach (var entity in tableMapping.OrderBy(x => x.Key))
             {
-                relations.AppendLine(item.Key);
+                sb.AppendLine(entity.Key);
 
-                foreach (var listItem in item.Value)
+                foreach (var item in entity.Value)
                 {
-                    relations.AppendLine("  " + listItem + " relation ");
+                    switch (item.Item2)
+                    {
+                        case "String":
+                        case "Boolean":
+                        case "Json":
+                        case "Integer":
+                        case "Long":
+                        case "DateTime":
+                        case "Decimal":
+                        case "DateTimeOffset":
+                            sb.AppendLine("  " + item.Item1 + " " + item.Item2);
+                            break;
+                        default:
+                            sb.AppendLine("  " + item.Item1 + " " + "relation" + " fk " + item.Item2 + "." + item.Item1);
+                            break;
+                    }
                 }
+
+                if (entity.Key == "MAction")
+                {
+                    sb.AppendLine("  ActionToStateMachine relation fk MAutomationStateMachine.ActionToStateMachine");
+                    sb.AppendLine("  ActionToScript relation fk MScript.ActionToScript");
+                    sb.AppendLine("  DetailsPageToAction relation fk PortalPage.DetailsPageToAction");
+                    sb.AppendLine("  BlockToDeliverablesLifecycleStatus relation fk MProjectDeliverablesLifecycleStatus.BlockToDeliverablesLifecycleStatus");
+                    sb.AppendLine("  TaskToDeliverablesLifecycleStatus relation fk MProjectDeliverablesLifecycleStatus.TaskToDeliverablesLifecycleStatus");
+                }
+
+                if (entity.Key == "MProjectBlock")
+                {
+                    sb.AppendLine("  BlockToDeliverablesLifecycleStatus relation fk MProjectDeliverablesLifecycleStatus.BlockToDeliverablesLifecycleStatus");
+                }
+
+                if (entity.Key == "MProjectTask")
+                {
+                    sb.AppendLine("  TaskToDeliverablesLifecycleStatus relation fk MProjectDeliverablesLifecycleStatus.TaskToDeliverablesLifecycleStatus");
+                }
+
                 sb.AppendLine();
 
             }
+            //foreach (var item in additionalTables.Where(x => !(x.Key.StartsWith(filter))))
+            //{
+            //    relations.AppendLine(item.Key);
+
+            //    foreach (var listItem in item.Value)
+            //    {
+            //        relations.AppendLine("  " + listItem + " relation ");
+            //    }
+            //    sb.AppendLine();
+
+            //}
 
             Console.WriteLine("----------Output----------");
             Console.WriteLine(sb.ToString() + relations.ToString());
@@ -200,6 +269,16 @@ namespace Stylelabs.M.WebSdk.Examples
             public string Cardinality { get; set; }
             [JsonProperty(PropertyName = "associated_entitydefinition")]
             public AssociatedDefinition Definition { get; set; }
+            [JsonProperty(PropertyName = "allow_navigation")]
+            public bool AllowNAvigation { get; set; }
+            [JsonProperty(PropertyName = "is_taxonomy_relation")]
+            public bool IsTaxonomyRelation { get; set; }
+            [JsonProperty(PropertyName = "content_is_copied")]
+            public bool ContentIsCopied { get; set; }
+            [JsonProperty(PropertyName = "is_system_owned")]
+            public bool IsSystemOwned { get; set; }
+            [JsonProperty(PropertyName = "is_nested")]
+            public bool IsNested { get; set; }
         }
 
         public class AssociatedDefinition
