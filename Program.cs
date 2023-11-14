@@ -1,25 +1,16 @@
-﻿using System;
-using System.Text;
-using Newtonsoft.Json.Linq;
+﻿using System.Text;
 using Newtonsoft.Json;
-using Stylelabs.M.Base.Querying;
-using Stylelabs.M.Sdk.Contracts.Base;
-using Stylelabs.M.Sdk.Models.Content;
 using Stylelabs.M.Sdk.WebClient;
 using Stylelabs.M.Sdk.WebClient.Authentication;
 using Stylelabs.M.Sdk.WebClient.Http;
 using Stylelabs.M.Base.Web.Api.Models;
-using Stylelabs.M.Sdk.WebClient.Contracts.Audit;
-using Tavis.UriTemplates;
-using static System.Net.WebRequestMethods;
 using CHInheritanceTree;
-using System.Linq;
 
 namespace Stylelabs.M.WebSdk.Examples
 {
     public class Program
     {
-        static async Task Main(string[] args)
+        private static async Task Main(string[] args)
         {
             Console.WriteLine("Content Hub - Schema Visualiser - Timothy Marsh");
 
@@ -52,7 +43,7 @@ namespace Stylelabs.M.WebSdk.Examples
                 throw;
             }
 
-            var endPointLink = new Link(url + "api/entitydefinitions","", true);
+            var endPointLink = new Link(url + "api/entitydefinitions?includeConditionalMembers=True", "", true);
             var bindings = new Dictionary<string, string>();
             var endpoint = endPointLink.Bind(bindings);
             var keepGoing = true;
@@ -75,23 +66,24 @@ namespace Stylelabs.M.WebSdk.Examples
 
             StringBuilder sb = new StringBuilder();
             StringBuilder relations = new StringBuilder();
-            Dictionary<string,List<string>> additionalTables = new Dictionary<string, List<string>>();
-            Dictionary<string,List<Tuple<string,string>>> tableMapping = new Dictionary<string, List<Tuple<string, string>>>();
 
-            foreach (var entity in result)
+            Dictionary<string, List<Tuple<string, string>>> tableMapping = new Dictionary<string, List<Tuple<string, string>>>();
+
+            foreach (var entity in result.OrderBy(e => e.Name))
             {
                 if (!tableMapping.ContainsKey(entity.Name.Replace(".", "")))
                 {
-                    tableMapping.Add(entity.Name.Replace(".", ""), new List<Tuple<string,string>> { });
+                    Console.WriteLine($" > Processing '{entity.Name}'");
+                    tableMapping.Add(entity.Name.Replace(".", ""), new List<Tuple<string, string>> { });
                 }
 
                 foreach (var member in entity.MemberGroups)
                 {
-                    foreach (var relation in member.Relations.Where(x =>!x.IsSystemOwned).Distinct().GroupBy(p => p.Name).Select(g => g.First()))
+                    foreach (var relation in member.Relations.Where(x => !x.IsSystemOwned).Distinct().GroupBy(p => p.Name).Select(g => g.First()))
                     {
-                        if(!tableMapping[entity.Name.Replace(".", "")].Any(x => x.Item1 == relation.Name.Replace(".", "")))
+                        if (!tableMapping[entity.Name.Replace(".", "")].Any(x => x.Item1 == relation.Name.Replace(".", "")))
                         {
-                            tableMapping[entity.Name.Replace(".", "")].Add(new Tuple<string, string>( relation.Name.Replace(".", ""), relation?.Type == "Relation" ? relation.Definition.href.Split('/').Last().Replace(".", "") : relation.Type));
+                            tableMapping[entity.Name.Replace(".", "")].Add(new Tuple<string, string>(relation.Name.Replace(".", ""), relation?.Type == "Relation" ? relation.Definition.href.Split('/').Last().Replace(".", "") : relation.Type));
                         }
 
                         if (relation?.Type == "Relation")
@@ -104,8 +96,6 @@ namespace Stylelabs.M.WebSdk.Examples
                                 tableMapping[relationTable].Add(new Tuple<string, string>(relation.Name.Replace(".", ""), entity.Name.Replace(".", "")));
                             }
                         }
-
-                        
                     }
                 }
             }
@@ -114,7 +104,7 @@ namespace Stylelabs.M.WebSdk.Examples
             {
                 sb.AppendLine(entity.Key);
 
-                foreach (var item in entity.Value)
+                foreach (var item in entity.Value.OrderBy(y => y))
                 {
                     switch (item.Item2)
                     {
@@ -128,8 +118,9 @@ namespace Stylelabs.M.WebSdk.Examples
                         case "DateTimeOffset":
                             sb.AppendLine("  " + item.Item1 + " " + item.Item2);
                             break;
+
                         default:
-                            sb.AppendLine("  " + item.Item1 + " " + "relation" + " fk " + item.Item2 + "." + item.Item1);
+                            sb.AppendLine("  " + item.Item1 + " relation fk " + item.Item2 + "." + item.Item1);
                             break;
                     }
                 }
@@ -154,7 +145,6 @@ namespace Stylelabs.M.WebSdk.Examples
                 }
 
                 sb.AppendLine();
-
             }
 
             Console.WriteLine("----------Output----------");
@@ -189,10 +179,13 @@ namespace Stylelabs.M.WebSdk.Examples
         {
             [JsonProperty(PropertyName = "items")]
             public List<EntityDefinition> Items { get; set; }
+
             [JsonProperty(PropertyName = "total_items")]
             public int TotalItems { get; set; }
+
             [JsonProperty(PropertyName = "returned_items")]
             public int ReturnedItems { get; set; }
+
             [JsonProperty(PropertyName = "next")]
             public Link Next { get; set; }
         }
@@ -201,8 +194,10 @@ namespace Stylelabs.M.WebSdk.Examples
         {
             [JsonProperty(PropertyName = "id")]
             public string Id { get; set; }
+
             [JsonProperty(PropertyName = "name")]
             public string Name { get; set; }
+
             [JsonProperty(PropertyName = "member_groups")]
             public List<MemberGroups> MemberGroups { get; set; }
         }
@@ -211,6 +206,7 @@ namespace Stylelabs.M.WebSdk.Examples
         {
             [JsonProperty(PropertyName = "name")]
             public string Name { get; set; }
+
             [JsonProperty(PropertyName = "members")]
             public List<PropertyRelations> Relations { get; set; }
         }
@@ -219,22 +215,31 @@ namespace Stylelabs.M.WebSdk.Examples
         {
             [JsonProperty(PropertyName = "type")]
             public string Type { get; set; }
+
             [JsonProperty(PropertyName = "name")]
             public string Name { get; set; }
+
             [JsonProperty(PropertyName = "role")]
             public string Role { get; set; }
+
             [JsonProperty(PropertyName = "cardinality")]
             public string Cardinality { get; set; }
+
             [JsonProperty(PropertyName = "associated_entitydefinition")]
             public AssociatedDefinition Definition { get; set; }
+
             [JsonProperty(PropertyName = "allow_navigation")]
             public bool AllowNAvigation { get; set; }
+
             [JsonProperty(PropertyName = "is_taxonomy_relation")]
             public bool IsTaxonomyRelation { get; set; }
+
             [JsonProperty(PropertyName = "content_is_copied")]
             public bool ContentIsCopied { get; set; }
+
             [JsonProperty(PropertyName = "is_system_owned")]
             public bool IsSystemOwned { get; set; }
+
             [JsonProperty(PropertyName = "is_nested")]
             public bool IsNested { get; set; }
         }
